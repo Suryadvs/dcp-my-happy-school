@@ -1,0 +1,96 @@
+import { useState, useEffect } from "react";
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { 
+  FileText, 
+  Calendar, 
+  Clock, 
+  Download,
+  Upload,
+  AlertCircle
+} from "lucide-react";
+import { useHomework } from "@/contexts/HomeworkContext";
+import { useData } from "@/contexts/DataContext";
+import { format, differenceInDays } from "date-fns";
+
+export default function ParentHomework() {
+  const { students, loading: studentsLoading } = useData();
+  const { getStudentHomework, submitHomework, loading: homeworkLoading, error } = useHomework();
+  const [activeChild, setActiveChild] = useState("");
+  const [homeworkData, setHomeworkData] = useState<{[key: string]: any}>({});
+
+  // Load homework data when component mounts or active child changes
+  useEffect(() => {
+    if (!students.length) return;
+
+    // Set initial active child
+    if (!activeChild && students[0]) {
+      setActiveChild(students[0].id);
+    }
+
+    // Load homework for each child
+    const loadHomework = async () => {
+      const data: {[key: string]: any} = {};
+
+      for (const student of students) {
+        try {
+          const homework = await getStudentHomework(student.id);
+          data[student.id] = {
+            upcoming: homework.filter((hw: any) => !hw.submitted),
+            past: homework.filter((hw: any) => hw.submitted)
+          };
+        } catch (error) {
+          console.error(`Failed to load homework for student ${student.id}:`, error);
+        }
+      }
+
+      setHomeworkData(data);
+    };
+
+    loadHomework();
+  }, [students, activeChild, getStudentHomework]);
+
+  // Get status badge for homework
+  const getStatusBadge = (homework: any) => {
+    if (homework.submitted) {
+      return homework.grade ? (
+        <Badge className="bg-green-500">Graded</Badge>
+      ) : (
+        <Badge variant="outline">Submitted</Badge>
+      );
+    }
+
+    const daysRemaining = differenceInDays(new Date(homework.dueDate), new Date());
+    if (daysRemaining < 0) {
+      return <Badge className="bg-red-500">Overdue</Badge>;
+    } else if (daysRemaining === 0) {
+      return <Badge className="bg-amber-500">Due Today</Badge>;
+    } else if (daysRemaining <= 2) {
+      return <Badge className="bg-amber-500">Due Soon</Badge>;
+    } else {
+      return <Badge variant="outline">Upcoming</Badge>;
+    }
+  };
+
+  // Handle downloading homework files
+  const handleDownload = (homeworkId: string, fileName: string) => {
+    // Implementation for downloading homework files
+  };
+
+  // Handle submitting homework
+  const handleSubmit = async (homeworkId: string, files: FileList) => {
+    try {
+      await submitHomework(homeworkId, {
+        files: Array.from(files),
+        submittedAt: new Date().toISOString()
+      });
