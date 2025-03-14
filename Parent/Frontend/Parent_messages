@@ -1,0 +1,689 @@
+import { useState, useEffect } from "react";
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { 
+  MessageSquare, 
+  Send, 
+  Calendar, 
+  Clock, 
+  Search,
+  Star,
+  StarOff,
+  Trash2,
+  PenSquare,
+  AlertCircle
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { useMessages } from "@/contexts/MessagesContext";
+import { useData } from "@/contexts/DataContext";
+import { format } from "date-fns";
+
+export default function ParentMessages() {
+  const { toast } = useToast();
+  const { students, loading: studentsLoading } = useData();
+  const { 
+    messages,
+    unreadCount,
+    loading: messagesLoading,
+    error,
+    sendMessage,
+    markAsRead,
+    deleteMessage,
+    starMessage,
+    getMessagesByFolder,
+    refreshMessages
+  } = useMessages();
+
+  const [activeChild, setActiveChild] = useState("");
+  const [activeMessageTab, setActiveMessageTab] = useState("inbox");
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [composeDialogOpen, setComposeDialogOpen] = useState(false);
+  const [newMessage, setNewMessage] = useState({
+    subject: "",
+    content: "",
+    recipient: "",
+    regarding: ""
+  });
+
+  // Load messages when active child or tab changes
+  useEffect(() => {
+    if (!activeChild) return;
+
+    const loadMessages = async () => {
+      try {
+        const messages = await getMessagesByFolder(activeMessageTab);
+        // Messages are handled by the context
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+      }
+    };
+
+    loadMessages();
+  }, [activeChild, activeMessageTab, getMessagesByFolder]);
+
+  // Set initial active child
+  useEffect(() => {
+    if (!students.length) return;
+    if (!activeChild && students[0]) {
+      setActiveChild(students[0].id);
+    }
+  }, [students, activeChild]);
+
+  // Filter messages based on search query
+  const filteredMessages = messages.filter(msg => 
+    msg.subject.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    msg.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (activeMessageTab === "inbox" ? 
+      msg.from.name.toLowerCase().includes(searchQuery.toLowerCase()) : 
+      msg.to.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  // Handle message click
+  const handleMessageClick = async (message) => {
+    setSelectedMessage(message);
+    
+    // Mark as read if unread
+    if (activeMessageTab === "inbox" && !message.read) {
+      try {
+        await markAsRead(message.id);
+      } catch (error) {
+        console.error('Failed to mark message as read:', error);
+      }
+    }
+  };
+
+  // Handle star message
+  const handleStarMessage = async (messageId: string, isStarred: boolean) => {
+    try {
+      await starMessage(messageId, isStarred);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update message star status.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Handle delete message
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await deleteMessage(messageId);
+      setSelectedMessage(null);
+      
+      toast({
+        title: "Message deleted",
+        description: "The message has been moved to trash."
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete message.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Handle send reply
+  const handleSendReply = async () => {
+    if (!replyText.trim()) {
+      toast({
+        title: "Empty message",
+        description: "Please enter a message before sending.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      await sendMessage({
+        to: selectedMessage.from.id,
+        subject: selectedMessage.subject.startsWith("Re:") ? 
+          selectedMessage.subject : 
+          `Re: ${selectedMessage.subject}`,
+        content: replyText,
+        regarding: selectedMessage.regarding
+      });
+      
+      setReplyText("");
+      setActiveMessageTab("sent");
+      await refreshMessages();
+      
+      toast({
+        title: "Message sent",
+        description: "Your reply has been sent successfully."
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to send message.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Handle send new message
+  const handleSendNewMessage = async () => {
+    if (!newMessage.recipient) {
+      toast({
+        title: "No recipient selected",
+        description: "Please select a teacher to send this message to.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newMessage.subject.trim()) {
+      toast({
+        title: "Missing subject",
+        description: "Please enter a subject for your message.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!newMessage.content.trim()) {
+      toast({
+        title: "Empty message",
+        description: "Please enter a message before sending.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      await sendMessage({
+        to: newMessage.recipient,
+        subject: newMessage.subject,
+        content: newMessage.content,
+        regarding: newMessage.regarding
+      });
+      
+      setNewMessage({
+        subject: "",
+        content: "",
+        recipient: "",
+        regarding: ""
+      });
+      setComposeDialogOpen(false);
+      
+      await refreshMessages();
+      setActiveMessageTab("sent");
+      
+      toast({
+        title: "Message sent",
+        description: "Your message has been sent successfully."
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to send message.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  if (studentsLoading || messagesLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        <AlertCircle className="h-6 w-6 mr-2" />
+        <span>Failed to load messages. Please try again.</span>
+      </div>
+    );
+  }
+
+  if (!students.length) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+          <h3 className="text-lg font-medium">No children found</h3>
+          <p className="text-muted-foreground">
+            No children are currently associated with your account
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-white dark:bg-gray-800">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Teacher Messages</CardTitle>
+            <CardDescription>
+              Communicate with your children's teachers
+            </CardDescription>
+          </div>
+          <Dialog open={composeDialogOpen} onOpenChange={setComposeDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-rose-600 hover:bg-rose-700">
+                <PenSquare className="h-4 w-4 mr-2" />
+                Compose Message
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[525px]">
+              <DialogHeader>
+                <DialogTitle>New Message</DialogTitle>
+                <DialogDescription>
+                  Send a message to a teacher
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="student" className="text-right">
+                    Regarding
+                  </Label>
+                  <Select 
+                    value={newMessage.regarding} 
+                    onValueChange={(value) => setNewMessage(prev => ({ ...prev, regarding: value }))}
+                  >
+                    <SelectTrigger className="col-span-3">
+                      <SelectValue placeholder="Select student" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {students.map(student => (
+                        <SelectItem key={student.id} value={student.id}>
+                          {student.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="teacher" className="text-right">
+                    To
+                  </Label>
+                  <Select 
+                    value={newMessage.recipient} 
+                    onValueChange={(value) => setNewMessage(prev => ({ ...prev, recipient: value }))}
+                  >
+                    <SelectTrigger className="col-span-3">
+                      <SelectValue placeholder="Select teacher" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {newMessage.regarding && students.find(s => s.id === newMessage.regarding)?.teachers.map(teacher => (
+                        <SelectItem key={teacher.id} value={teacher.id}>
+                          {teacher.name} ({teacher.subject})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="subject" className="text-right">
+                    Subject
+                  </Label>
+                  <Input
+                    id="subject"
+                    value={newMessage.subject}
+                    onChange={(e) => setNewMessage(prev => ({ ...prev, subject: e.target.value }))}
+                    className="col-span-3"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-4 items-start gap-4">
+                  <Label htmlFor="message" className="text-right pt-2">
+                    Message
+                  </Label>
+                  <Textarea
+                    id="message"
+                    value={newMessage.content}
+                    onChange={(e) => setNewMessage(prev => ({ ...prev, content: e.target.value }))}
+                    className="col-span-3 min-h-[150px]"
+                    placeholder="Type your message here..."
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button 
+                  onClick={handleSendNewMessage}
+                  className="bg-rose-600 hover:bg-rose-700"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Message
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeChild} onValueChange={setActiveChild}>
+            <TabsList className="mb-4">
+              {students.map(student => (
+                <TabsTrigger key={student.id} value={student.id}>
+                  {student.name}
+                  {unreadCount > 0 && (
+                    <Badge className="ml-2 bg-rose-500">{unreadCount}</Badge>
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="md:w-1/3">
+                <div className="mb-4">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      placeholder="Search messages..."
+                      className="pl-8"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <Tabs value={activeMessageTab} onValueChange={setActiveMessageTab}>
+                  <TabsList className="mb-4 grid grid-cols-2">
+                    <TabsTrigger value="inbox">
+                      Inbox
+                      {unreadCount > 0 && (
+                        <Badge className="ml-2 bg-rose-500">{unreadCount}</Badge>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="sent">Sent</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="inbox" className="m-0">
+                    <div className="border rounded-md overflow-hidden">
+                      {filteredMessages.length > 0 ? (
+                        <div className="divide-y">
+                          {filteredMessages.map((message) => (
+                            <div 
+                              key={message.id}
+                              className={`p-3 cursor-pointer hover:bg-muted ${
+                                selectedMessage?.id === message.id ? 'bg-muted' : ''
+                              } ${!message.read ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                              onClick={() => handleMessageClick(message)}
+                            >
+                              <div className="flex justify-between items-start mb-1">
+                                <div className="flex items-center">
+                                  <Avatar className="h-8 w-8 mr-2">
+                                    <AvatarFallback>
+                                      {message.from.name.split(' ').map(n => n[0]).join('')}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className={`font-medium ${!message.read ? 'font-bold' : ''}`}>
+                                    {message.from.name}
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStarMessage(message.id, !message.starred);
+                                    }}
+                                    className="text-muted-foreground hover:text-amber-500"
+                                  >
+                                    {message.starred ? (
+                                      <Star className="h-4 w-4 fill-amber-500 text-amber-500" />
+                                    ) : (
+                                      <StarOff className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground mb-1">
+                                Re: {message.regarding.name}
+                              </div>
+                              <h4 className={`text-sm ${!message.read ? 'font-semibold' : ''}`}>
+                                {message.subject}
+                              </h4>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {message.content}
+                              </p>
+                              <div className="flex justify-between items-center mt-1">
+                                <div className="flex items-center text-xs text-muted-foreground">
+                                  <Calendar className="h-3 w-3 mr-1" />
+                                  {format(new Date(message.createdAt), 'MMM d, yyyy')}
+                                </div>
+                                <div className="flex items-center text-xs text-muted-foreground">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  {format(new Date(message.createdAt), 'h:mm a')}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center">
+                          <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                          <h3 className="text-lg font-medium">No messages found</h3>
+                          <p className="text-muted-foreground">
+                            {searchQuery ? "No messages match your search" : "Your inbox is empty"}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="sent" className="m-0">
+                    <div className="border rounded-md overflow-hidden">
+                      {filteredMessages.length > 0 ? (
+                        <div className="divide-y">
+                          {filteredMessages.map((message) => (
+                            <div 
+                              key={message.id}
+                              className={`p-3 cursor-pointer hover:bg-muted ${
+                                selectedMessage?.id === message.id ? 'bg-muted' : ''
+                              }`}
+                              onClick={() => handleMessageClick(message)}
+                            >
+                              <div className="flex justify-between items-start mb-1">
+                                <div className="flex items-center">
+                                  <Avatar className="h-8 w-8 mr-2">
+                                    <AvatarFallback>
+                                      {message.to.name.split(' ').map(n => n[0]).join('')}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="font-medium">To: {message.to.name}</span>
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground mb-1">
+                                Re: {message.regarding.name}
+                              </div>
+                              <h4 className="text-sm">{message.subject}</h4>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {message.content}
+                              </p>
+                              <div className="flex justify-between items-center mt-1">
+                                <div className="flex items-center text-xs text-muted-foreground">
+                                  <Calendar className="h-3 w-3 mr-1" />
+                                  {format(new Date(message.createdAt), 'MMM d, yyyy')}
+                                </div>
+                                <div className="flex items-center text-xs text-muted-foreground">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  {format(new Date(message.createdAt), 'h:mm a')}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center">
+                          <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                          <h3 className="text-lg font-medium">No sent messages</h3>
+                          <p className="text-muted-foreground">
+                            {searchQuery ? "No messages match your search" : "You haven't sent any messages yet"}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+              
+              <div className="md:w-2/3">
+                {selectedMessage ? (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h3 className="text-xl font-bold">{selectedMessage.subject}</h3>
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            <span className="mr-4">
+                              {activeMessageTab === "inbox" ? "From:" : "To:"} {
+                                activeMessageTab === "inbox" ? 
+                                selectedMessage.from.name : 
+                                selectedMessage.to.name
+                              }
+                            </span>
+                            <span className="flex items-center">
+                              <Calendar className="h-3 w-3 mr-1" />
+                              {format(new Date(selectedMessage.createdAt), 'MMM d, yyyy')}
+                            </span>
+                            <span className="flex items-center ml-4">
+                              <Clock className="h-3 w-3 mr-1" />
+                              {format(new Date(selectedMessage.createdAt), 'h:mm a')}
+                            </span>
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            Regarding: {selectedMessage.regarding.name}
+                          </div>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="icon"
+                          onClick={() => handleDeleteMessage(selectedMessage.id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
+                        </Button>
+                      </div>
+                      
+                      <div className="border-t pt-4 mb-6">
+                        <div className="whitespace-pre-line">
+                          {selectedMessage.content}
+                        </div>
+                      </div>
+                      
+                      {activeMessageTab === "inbox" && (
+                        <div>
+                          <h4 className="font-medium mb-2">Reply</h4>
+                          <Textarea 
+                            placeholder="Type your reply here..."
+                            className="min-h-[120px] mb-4"
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                          />
+                          <div className="flex justify-end">
+                            <Button 
+                              onClick={handleSendReply}
+                              className="bg-rose-600 hover:bg-rose-700"
+                            >
+                              <Send className="h-4 w-4 mr-2" />
+                              Send Reply
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="flex items-center justify-center h-64 border rounded-lg">
+                    <div className="text-center">
+                      <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                      <h3 className="text-lg font-medium">Select a message</h3>
+                      <p className="text-muted-foreground">
+                        Choose a message from the list to view its contents
+                      </p>
+                      <Button 
+                        className="mt-4 bg-rose-600 hover:bg-rose-700"
+                        onClick={() => setComposeDialogOpen(true)}
+                      >
+                        <PenSquare className="h-4 w-4 mr-2" />
+                        Compose New Message
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Tabs>
+        </CardContent>
+      </Card>
+      
+      <Card className="bg-white dark:bg-gray-800">
+        <CardHeader>
+          <CardTitle>Communication Guidelines</CardTitle>
+          <CardDescription>Tips for effective parent-teacher communication</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-start">
+              <div className="bg-rose-100 dark:bg-rose-900/20 p-2 rounded-full mr-3">
+                <MessageSquare className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h4 className="font-medium">Be Clear and Specific</h4>
+                <p className="text-sm text-muted-foreground">
+                  When messaging teachers, clearly state your concerns or questions. Include relevant details but keep messages concise.
+                </p>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-start">
+              <div className="bg-rose-100 dark:bg-rose-900/20 p-2 rounded-full mr-3">
+                <Clock className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h4 className="font-medium">Response Time</h4>
+                <p className="text-sm text-muted-foreground">
+                  Teachers typically respond within 24-48 hours during school days. For urgent matters, please call the school office directly.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
