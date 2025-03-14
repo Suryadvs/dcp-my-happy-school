@@ -94,3 +94,234 @@ export default function ParentHomework() {
         files: Array.from(files),
         submittedAt: new Date().toISOString()
       });
+
+      // Refresh homework data
+      const homework = await getStudentHomework(activeChild);
+      setHomeworkData(prev => ({
+        ...prev,
+        [activeChild]: {
+          upcoming: homework.filter((hw: any) => !hw.submitted),
+          past: homework.filter((hw: any) => hw.submitted)
+        }
+      }));
+    } catch (error) {
+      console.error('Failed to submit homework:', error);
+    }
+  };
+
+  if (studentsLoading || homeworkLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64 text-red-500">
+        <AlertCircle className="h-6 w-6 mr-2" />
+        <span>Failed to load homework data. Please try again.</span>
+      </div>
+    );
+  }
+
+  if (!students.length) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+          <h3 className="text-lg font-medium">No children found</h3>
+          <p className="text-muted-foreground">
+            No children are currently associated with your account
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-white dark:bg-gray-800">
+        <CardHeader>
+          <CardTitle>Homework Tracker</CardTitle>
+          <CardDescription>
+            Monitor your children's homework assignments
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeChild} onValueChange={setActiveChild}>
+            <TabsList className="mb-4">
+              {students.map(student => (
+                <TabsTrigger key={student.id} value={student.id}>
+                  {student.name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            
+            {students.map(student => (
+              <TabsContent key={student.id} value={student.id}>
+                {homeworkData[student.id] ? (
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Upcoming Assignments</CardTitle>
+                        <CardDescription>Due soon or in progress</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {homeworkData[student.id].upcoming.length > 0 ? (
+                          <div className="space-y-4">
+                            {homeworkData[student.id].upcoming.map((homework: any) => (
+                              <div key={homework.id}>
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <h4 className="font-medium">{homework.title}</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                      {homework.subject} • Due {format(new Date(homework.dueDate), 'MMM d, yyyy')}
+                                    </p>
+                                  </div>
+                                  {getStatusBadge(homework)}
+                                </div>
+                                <p className="text-sm mb-3">
+                                  {homework.description}
+                                </p>
+                                <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                  <div className="flex items-center">
+                                    <Calendar className="h-3 w-3 mr-1" />
+                                    <span>Assigned: {format(new Date(homework.createdAt), 'MMM d, yyyy')}</span>
+                                  </div>
+                                  <div className="flex space-x-2">
+                                    {homework.attachments?.map((attachment: any) => (
+                                      <Button 
+                                        key={attachment.id}
+                                        variant="outline" 
+                                        size="sm"
+                                        onClick={() => handleDownload(homework.id, attachment.fileName)}
+                                      >
+                                        <Download className="h-3 w-3 mr-1" />
+                                        {attachment.fileName}
+                                      </Button>
+                                    ))}
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => {
+                                        const input = document.createElement('input');
+                                        input.type = 'file';
+                                        input.multiple = true;
+                                        input.onchange = (e) => {
+                                          const files = (e.target as HTMLInputElement).files;
+                                          if (files) {
+                                            handleSubmit(homework.id, files);
+                                          }
+                                        };
+                                        input.click();
+                                      }}
+                                    >
+                                      <Upload className="h-3 w-3 mr-1" />
+                                      Submit
+                                    </Button>
+                                  </div>
+                                </div>
+                                {homework !== homeworkData[student.id].upcoming[homeworkData[student.id].upcoming.length - 1] && (
+                                  <Separator className="my-4" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                            <h3 className="text-lg font-medium">No upcoming homework</h3>
+                            <p className="text-muted-foreground">
+                              All current assignments have been submitted
+                            </p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Past Assignments</CardTitle>
+                        <CardDescription>Completed homework history</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {homeworkData[student.id].past.length > 0 ? (
+                          <div className="space-y-4">
+                            {homeworkData[student.id].past.map((homework: any) => (
+                              <div key={homework.id}>
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <h4 className="font-medium">{homework.title}</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                      {homework.subject} • Submitted {format(new Date(homework.submittedAt), 'MMM d, yyyy')}
+                                    </p>
+                                  </div>
+                                  {getStatusBadge(homework)}
+                                </div>
+                                {homework.grade && (
+                                  <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg mb-3">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-medium">Grade:</span>
+                                      <span className="text-green-600 dark:text-green-400 font-bold">
+                                        {homework.grade}%
+                                      </span>
+                                    </div>
+                                    {homework.feedback && (
+                                      <p className="text-sm mt-2">
+                                        {homework.feedback}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                                <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                  <div className="flex items-center">
+                                    <Clock className="h-3 w-3 mr-1" />
+                                    <span>Due date was: {format(new Date(homework.dueDate), 'MMM d, yyyy')}</span>
+                                  </div>
+                                  <div className="flex space-x-2">
+                                    {homework.attachments?.map((attachment: any) => (
+                                      <Button 
+                                        key={attachment.id}
+                                        variant="outline" 
+                                        size="sm"
+                                        onClick={() => handleDownload(homework.id, attachment.fileName)}
+                                      >
+                                        <Download className="h-3 w-3 mr-1" />
+                                        {attachment.fileName}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                                {homework !== homeworkData[student.id].past[homeworkData[student.id].past.length - 1] && (
+                                  <Separator className="my-4" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                            <h3 className="text-lg font-medium">No past assignments</h3>
+                            <p className="text-muted-foreground">
+                              No homework has been submitted yet
+                            </p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                )}
+              </TabsContent>
+            ))}
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
