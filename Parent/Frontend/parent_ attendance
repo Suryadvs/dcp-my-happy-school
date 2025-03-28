@@ -1,0 +1,225 @@
+import { useState, useEffect } from "react";
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Progress } from "@/components/ui/progress";
+import { Calendar, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { useAttendance } from "@/contexts/AttendanceContext";
+import { format } from "date-fns";
+
+export default function ParentAttendance() {
+  const { getStudentAttendance, loading, error } = useAttendance();
+  const [activeChildTab, setActiveChildTab] = useState("emma");
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [attendanceData, setAttendanceData] = useState({
+    emma: {
+      records: [],
+      stats: {
+        total: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        excused: 0
+      }
+    },
+    michael: {
+      records: [],
+      stats: {
+        total: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        excused: 0
+      }
+    }
+  });
+
+  // Load attendance data for the selected child
+  useEffect(() => {
+    const loadAttendance = async () => {
+      try {
+        const startDate = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1);
+        const endDate = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0);
+        
+        const records = await getStudentAttendance(
+          activeChildTab === "emma" ? "1" : "2",
+          startDate.toISOString(),
+          endDate.toISOString()
+        );
+        
+        // Calculate stats from records
+        const stats = records.reduce((acc, record) => {
+          acc.total++;
+          acc[record.status]++;
+          return acc;
+        }, {
+          total: 0,
+          present: 0,
+          absent: 0,
+          late: 0,
+          excused: 0
+        });
+// Update state with new data
+        setAttendanceData(prev => ({
+          ...prev,
+          [activeChildTab]: {
+            records,
+            stats
+          }
+        }));
+      } catch (error) {
+        console.error('Failed to load attendance:', error);
+      }
+    };<TabsContent value="michael">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Present Days</p>
+                      <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                        {attendanceData.michael.stats.present}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Absent Days</p>
+                      <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+                        {attendanceData.michael.stats.absent}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Late Arrivals</p>
+                      <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                        {attendanceData.michael.stats.late}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Excused</p>
+                      <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                        {attendanceData.michael.stats.excused}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Attendance Records</CardTitle>
+                  <CardDescription>Last 10 school days</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Time</TableHead>
+                          <TableHead>Notes</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {attendanceData.michael.records.slice(0, 10).map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>{format(new Date(record.date), 'MMM d, yyyy')}</TableCell>
+                            <TableCell>{getStatusBadge(record.status)}</TableCell>
+                            <TableCell>{record.time || "-"}</TableCell>
+                            <TableCell>{record.notes || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle>Attendance Summary</CardTitle>
+                  <CardDescription>Overall attendance statistics</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-medium">Present Rate</span>
+                        <span className="text-sm">
+                          {((attendanceData.michael.stats.present / attendanceData.michael.stats.total) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <Progress 
+                        value={(attendanceData.michael.stats.present / attendanceData.michael.stats.total) * 100} 
+                        className="h-2" 
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-medium">Absent Rate</span>
+                        <span className="text-sm">
+                          {((attendanceData.michael.stats.absent / attendanceData.michael.stats.total) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <Progress 
+                        value={(attendanceData.michael.stats.absent / attendanceData.michael.stats.total) * 100} 
+                        className="h-2" 
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-medium">Late Rate</span>
+                        <span className="text-sm">
+                          {((attendanceData.michael.stats.late / attendanceData.michael.stats.total) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <Progress 
+                        value={(attendanceData.michael.stats.late / attendanceData.michael.stats.total) * 100} 
+                        className="h-2" 
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+      
+      <Card className="bg-white dark:bg-gray-800">
+        <CardHeader>
+          <CardTitle>School Calendar</CardTitle>
+          <CardDescription>Important dates to remember</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="border-l-4 border-blue-500 pl-4 py-2">
+            <h4 className="font-medium flex items-center">
+              <Calendar className="h-4 w-4 text-blue-500 mr-2" />
+              Upcoming School Closure
+            </h4>
+            <p className="text-sm text-muted-foreground mt-1">
+              The school will be closed on June 5, 2025 for Teacher Professional Development Day.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
